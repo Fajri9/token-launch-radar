@@ -418,34 +418,104 @@ function holdDaysFor(age: number | null): number {
   return 30;
 }
 
-/** The category's one action, in the words a farmer can follow. */
+/** The category's one action, in the words a farmer can follow.
+ *  Radar-5 (Astra review): the old generator presented category guesses as
+ *  executable protocol instructions — "Supply USDC to USDD" for a CDP is
+ *  mechanically wrong (a CDP mints against collateral), a "main pool" is not
+ *  established by a category, and a curator need not run its own deposit app.
+ *  Every branch now says what to VERIFY first and to skip when the route is
+ *  not documented; the budget is a cap ("no more than $X"), never an order.
+ *  Eligibility restrictions (RWA, leverage) are checked before the subtype. */
 function actionFor(p: SnapshotProtocol, capital: number, chain: string): string {
-  const c = (p.category ?? '').toLowerCase();
-  const name = p.name;
-  if (c.includes('lend') || c.includes('cdp') || c.includes('collateral')) return `Supply $${capital} of USDC to ${name} on ${chain} and keep the position open.`;
-  if (c.includes('dex') || c.includes('yield') || c.includes('leveraged farm')) return `Provide $${capital} of liquidity to ${name}'s main pool on ${chain} and keep the position open.`;
-  if (c.includes('bridge')) return `Bridge $${capital} of USDC to ${chain} through ${name} and use the bridged funds in its app.`;
-  if (c.includes('staking') || c.includes('restak')) return `Stake $${capital} of the chain's staking asset through ${name} and keep the receipt token.`;
-  if (c.includes('perpetual') || c.includes('derivative')) return `Deposit $${capital} of USDC as margin on ${name} and open one small hedge.`;
-  if (c.includes('prediction')) return `Fund $${capital} and place one market position on ${name}.`;
-  if (c.includes('curator') || c.includes('allocator')) return `Deposit $${capital} into a ${name} vault on ${chain} and keep the shares.`;
-  if (c.includes('stable')) return `Mint or deposit $${capital} of the stable asset through ${name} on ${chain}.`;
-  if (c.includes('rwa')) return `Mint $${capital} of the protocol's yield asset on ${chain} and hold it; expect a whitelist or KYC step first.`;
-  if (c.includes('insurance')) return `Buy $${capital} of cover from ${name} on ${chain} and keep the policy.`;
-  if (c.includes('chain')) return `Use ${name} on ${chain}: bridge $${capital} in and make one transaction a week.`;
-  return `Deposit $${capital} of USDC into ${name} on ${chain} and keep the position open.`;
+  const name = String(p.name || p.slug || 'this protocol');
+  const network = String(chain || 'the supported network');
+  const budget = `$${capital}`;
+
+  const category = String(p.category || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+  const has = (pattern: RegExp) => pattern.test(category);
+
+  // Eligibility restrictions take priority over the product subtype.
+  if (has(/\brwa\b|\breal world assets?\b/)) {
+    return `Check ${name}'s eligibility, minimum investment, redemption terms and supported network. Only if eligible, use its documented investment route with no more than ${budget}; otherwise skip.`;
+  }
+
+  // Do not infer that leverage is necessary or appropriate.
+  if (has(/\bleverag(?:e|ed)\b/)) {
+    return `Review ${name}'s collateral, liquidation and withdrawal rules on ${network}. Use no more than ${budget} only if a documented unleveraged route exists; otherwise skip this interaction.`;
+  }
+
+  // Curators can operate through vaults hosted by another protocol.
+  if (has(/\bcurators?\b|\ballocators?\b/)) {
+    return `Find a vault explicitly managed by ${name} on ${network} and verify its host, deposit asset, fees and withdrawal terms. If accessible, deposit no more than ${budget} through that verified vault; otherwise skip.`;
+  }
+
+  if (has(/\bcdps?\b/)) {
+    return `Verify whether ${name} offers public collateralized minting on ${network}. If supported and understood, supply no more than ${budget} of approved collateral and mint only within its documented limits; otherwise skip.`;
+  }
+
+  if (has(/\blend(?:ing|er|ers)?\b/)) {
+    return `Check ${name}'s supported lending markets on ${network}, including deposit assets and withdrawal liquidity. If a suitable market exists, supply no more than ${budget} of an approved asset without borrowing; otherwise skip.`;
+  }
+
+  if (has(/\bcollateral\b/)) {
+    return `Identify ${name}'s documented collateral workflow on ${network}, including accepted assets and liquidation risks. Do not assume it accepts deposits or supports minting; commit no capital until the workflow is verified.`;
+  }
+
+  if (has(/\bdex(?:s|es)?\b|\bdecentralized exchanges?\b/)) {
+    return `Verify an accessible ${name} liquidity pool on ${network}, its assets, fees and liquidity risks. If suitable, add no more than ${budget} in total pool assets using its documented route; otherwise skip.`;
+  }
+
+  if (has(/\byield\b/)) {
+    return `Check whether ${name} offers an accessible yield vault on ${network}. Verify its underlying strategy, deposit asset, fees and withdrawal terms; if suitable, deposit no more than ${budget}, otherwise skip.`;
+  }
+
+  if (has(/\bbridg(?:e|es|ing)\b/)) {
+    return `Verify that ${name} supports the intended source and destination networks, asset and return route. If a route involving ${network} is supported, bridge no more than ${budget} of an approved asset; otherwise skip.`;
+  }
+
+  if (has(/\bstaking\b|\brestak(?:e|ed|ing)\b/)) {
+    return `Verify ${name}'s accepted staking or restaking assets on ${network}, slashing exposure and exit conditions. If suitable, stake no more than ${budget} through the documented route and record the resulting position; otherwise skip.`;
+  }
+
+  if (has(/\bperpetuals?\b|\bderivatives?\b/)) {
+    return `Check ${name}'s supported collateral, margin rules and withdrawal route on ${network}. If appropriate, fund no more than ${budget} using an approved asset; this checklist does not require opening a leveraged position.`;
+  }
+
+  if (has(/\bprediction\b/)) {
+    return `Review ${name}'s market rules, eligibility, settlement and liquidity. If participation is suitable, cap the total amount exposed to loss at ${budget}; otherwise skip the market interaction.`;
+  }
+
+  if (has(/\bstable(?:coin|coins)?\b/)) {
+    return `Verify how ${name}'s stable asset can be acquired and redeemed on ${network}. Use no more than ${budget} only through an accessible documented route; do not assume public minting or a deposit product exists.`;
+  }
+
+  if (has(/\binsurance\b/)) {
+    return `Check whether ${name} offers relevant cover on ${network}. Review exclusions, claims and policy duration; if suitable, spend no more than ${budget} on the premium and record the separate coverage amount.`;
+  }
+
+  if (/^(?:chains?|blockchains?|layer [12]|l[12]|rollups?|sidechains?)$/.test(category)) {
+    return `Verify ${name}'s network identity, gas asset and supported funding route. If useful, fund the network with no more than ${budget} and make one documented application interaction; do not assume repeated transactions earn eligibility.`;
+  }
+
+  return `Identify ${name}'s documented user workflow and supported assets on ${network}. Reserve ${budget} as a maximum budget, but make no deposit until access, asset support and withdrawal terms are verified.`;
 }
 
-/** The category's weekly qualifying action. */
+/** The category's weekly qualifying action. Radar-5: conditional on having
+ *  opened a position — step 2 of the plan may say "otherwise skip", and a
+ *  weekly action must not contradict that. */
 function weeklyFor(p: SnapshotProtocol): string {
   const c = (p.category ?? '').toLowerCase();
-  if (c.includes('lend') || c.includes('cdp') || c.includes('collateral')) return `Make one qualifying action each week, such as a deposit, a borrow or a repayment.`;
-  if (c.includes('dex') || c.includes('yield') || c.includes('leveraged farm')) return `Make one qualifying action each week, such as a swap, adding liquidity or claiming rewards.`;
-  if (c.includes('perpetual') || c.includes('derivative')) return `Make one qualifying action each week, such as a small trade or adjusting the hedge.`;
-  if (c.includes('prediction')) return `Make one qualifying action each week, such as a new market position.`;
-  if (c.includes('curator') || c.includes('allocator')) return `Make one qualifying action each week, such as a deposit, a rebalance or a vote.`;
-  if (c.includes('rwa')) return `Make one qualifying action each week, such as a mint, a redemption or a vote.`;
-  return `Make one qualifying action each week, such as a deposit, a swap or a vote.`;
+  if (c.includes('lend') || c.includes('cdp') || c.includes('collateral')) return `If you opened a position, make one qualifying action each week, such as a deposit, a borrow or a repayment.`;
+  if (c.includes('dex') || c.includes('yield') || c.includes('leveraged farm')) return `If you opened a position, make one qualifying action each week, such as a swap, adding liquidity or claiming rewards.`;
+  if (c.includes('perpetual') || c.includes('derivative')) return `If you opened a position, make one qualifying action each week, such as a small trade or adjusting the hedge.`;
+  if (c.includes('prediction')) return `If you opened a position, make one qualifying action each week, such as a new market position.`;
+  if (c.includes('curator') || c.includes('allocator')) return `If you opened a position, make one qualifying action each week, such as a deposit, a rebalance or a vote.`;
+  if (c.includes('rwa')) return `If you opened a position, make one qualifying action each week, such as a mint, a redemption or a vote.`;
+  return `If you opened a position, make one qualifying action each week, such as a deposit, a swap or a vote.`;
 }
 
 /**

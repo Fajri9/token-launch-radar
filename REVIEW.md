@@ -193,6 +193,97 @@ will catch the USDD/dTAO point.
   filtered shows "Risk Curators", "33 rows shown". The methodology panel
   (tall temp shot) and the USDD detail note were visually verified too.
 
+## Changes in radar-5 (Astra dashboard + farm-text update, 2026-11-15)
+
+Release note: dashboard + farm text only; scoring model unchanged
+(`MODEL_VERSION` stays `radar-4`). Three Astra calls via the Xingchi
+relay (reasoning high; one earlier combined prompt failed with
+`RemoteDisconnected` after 271 s, relay probe right after was OK, so the
+work was split in three): A1 CSS (prompt 10,213 / completion 14,392
+tokens), A2 JS (8,039 / 9,156), B backend + farm plans (8,698 / 5,902).
+Prompts and replies: `tools/astra-uiux-prompt-A1/A2/B.md`,
+`tools/astra-uiux-reply-A1/A2/B.md`.
+
+**Frontend (A1, implemented as written except two operator fixes).**
+KPI strip built from the existing facts (Total implied highlighted);
+#1 spotlight card (2fr) + 4 × 1fr; sticky header + 68vh scroll viewport
++ zebra + hover; deterministic control grid; drawer with boxed equation
+rows + numbered farm steps + cost chips; methodology as a 2-column grid
+with distinct note treatments (disclosure full-width amber with a
+DISCLOSURE label, method info-blue, caveat faint); exclusion table with
+a `data-label` hook that strips the `parent#` prefix. Operator fix 1:
+`.lede > p` → `.lede p` (the paragraph is nested in a div, Astra's
+selector never matched). Operator fix 2: the responsive column-hiding
+rules scoped to `.board-table` only (Astra's unscoped nth-child rules
+would have hidden the live table's Market-cap / Mcap-TVL columns, which
+sit at 5th/6th there). Operator fix 3 (after the first visual check):
+the `<caption>` elements rendered *between* the sticky header and the
+first row (the flex display broke table-caption placement), so all three
+captions moved out of their tables into `div.panel-caption` bars above
+them, with `aria-label` added to the tables to keep the association.
+Operator fix 4: at ≤980 px the 5-cell KPI strip left one empty slot on
+the second row, so the last fact now spans two columns.
+
+**Backend + JS (A2 and B, with two decisions between them).** A2
+confirmed the search-focus bug (render() destroyed the input on every
+keystroke) and set the number rule: three significant digits with unit
+promotion after rounding. B confirmed there is no formatting/logic
+duplication between main.ts and app.js, kept the dual row shape, and
+supplied the chosen search fix (`commitSearchInput`/`bindSearchInput`,
+IME-aware, restores caret + direction + scrollLeft) — chosen over A2's
+render-wrapper fix because it is strictly more complete. Decision 1
+(numbers): A2's 3-significant-digits won over B's "two decimals
+everywhere" ($637.20M) — trailing zeros add noise in a dense table.
+Decision 2 (sorting): B's fix applied — missing values sort last in both
+directions (`sortValue`/`compareSlugs`/`sortedRows`). Bar denominator:
+max implied in the filtered list (`impliedBarMax` + bounded `barPct`),
+not `list[0]`. Farm plans: `actionFor()` replaced entirely —
+verify-first / "otherwise skip" phrasing, budget as a cap ("no more than
+$X"), eligibility (RWA, leverage) checked before subtype. USDD step 2,
+before: "Supply $150 of USDC to USDD on Tron…" → after: "Verify whether
+USDD offers public collateralized minting on Tron. If supported and
+understood, supply no more than $150 of approved collateral and mint only
+within its documented limits; otherwise skip." Operator addition:
+`weeklyFor()` prefixed with "If you opened a position, " so the weekly
+step does not contradict step 2's "otherwise skip" (Astra flagged the
+check but did not supply weeklyFor). Astra error to note: B claimed
+`actionFor` had an undeclared `name` variable — wrong; that was an
+artifact of the operator's truncated prompt excerpt (the real code had
+`const name = p.name;`). The replacement function is still valid.
+Operator-found gap, fixed without a new Astra call: deep-links did not
+apply on a same-document hash change (paste a filtered link while the
+board is open, or back/forward) — a `hashchange` listener now resets the
+filters, re-applies the hash and re-renders; the drawer follows `#p=`
+and closes on back. `writeHash` uses `replaceState`, so it cannot loop.
+
+**Before/after numbers.** Data identical: regenerated radar-4 board.json
+from a git worktree at `df9b958` matched the recorded before-md5 exactly;
+rank/slug diffs 0, numeric diffs (implied/TVL/multiple) 0, farm steps
+changed 177/177, other field diffs 0, total implied $4.147B. Farm step
+lengths 144–304 chars (gate bound 20–600).
+
+**Verification.** `node verify-gate.mjs --out out` **7/7 PASS** (dashboard
+3 files, 60.4 KiB). Determinism: two full runs byte-identical (`diff -r`
+clean). Headless-browser functional test (CDP, `/tmp/radar5-cdp-test.mjs`,
+9 checks): multi-character search keeps focus + caret and filters to 1
+row ("gaun" → Gauntlet); bar is 100% for the filtered max after sorting
+by TVL; the 2 null-growth rows sort last ascending; `#category=Risk
+Curators` deep-links to 33 rows on fresh load AND on hashchange, and a
+new hash without the category clears it; detail drawer opens with the
+new farm wording; spotlight values are $1.07B / $637M / $223M / $186M /
+$148M and total $4.15B. Screenshots retaken at 1440×900 (board, detail,
+filtered) and visually checked; an 820 px-wide check shows the KPI strip
+reflowing 3+2 (full, no empty slot), the spotlight stacking 1 + 2 + 2,
+and the table hiding Age + Category-multiple with no horizontal overflow.
+The full page is now ~3,080 px tall (the capped table viewport shrank it
+from ~10,000 px); the methodology panel, disclosure note and footer were
+checked in a tall capture.
+
+**Deliberately not changed.** Dark theme kept (Astra: professional
+as-is). Model untouched — no evidence-backed patch found; n ≥ 3 stays
+rejected (third evaluation, no new evidence). Dual row shape and full
+`render()` kept. No new dashboard file, no CDN, still offline.
+
 ## What is still worth a decision (not a review)
 
 1. **Submit.** Astra's verdict is submit after the patches, and the patches

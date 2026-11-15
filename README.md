@@ -136,6 +136,62 @@ $70M. Derivatives (0.7934x on two comps) and Token Locker (0.6136x on two)
 were flagged by Astra as thin but left alone: no patch is justified from
 the aggregates alone, and the n ≥ 3 rule above was rejected as a redesign.
 
+## Changes in radar-5 (Astra dashboard + farm-text update of 2026-11-15)
+
+Dashboard and farm-text release; the scoring model is unchanged, so
+`MODEL_VERSION` stays `radar-4`. Three Astra calls (prompts and replies in
+`tools/astra-uiux-prompt-A1/A2/B.md`, `tools/astra-uiux-reply-A1/A2/B.md`):
+A1 rewrote the CSS, A2 reviewed the JS, B reviewed the backend and the
+farm plans. Data and ranking are byte-identical to radar-4: 177 rows, same
+top 5 (Steakhouse $1.07B, Gauntlet $637M, Veda $223M, USDD $186M, Nonce
+$148M), total implied $4.15B.
+
+**Frontend.** A KPI strip above the board (Total implied value highlighted
+in amber); the #1 protocol is a dominant spotlight card beside four
+smaller Top-5 cards; the table has a sticky header inside a scroll
+viewport with zebra rows and hover; the controls sit on a fixed grid with
+clear active states; the detail drawer shows the model as boxed equation
+rows ending in a highlighted implied-value total, and the farm plan as
+numbered steps with cost chips; the methodology panel is a two-column grid
+with a full-width amber DISCLOSURE note (USDD/dTAO), an info-blue method
+note and a faint caveat note, plus the full category-multiples table and
+the 20 excluded protocols with clean parent labels. The dark theme was
+kept: Astra judged it professional as-is, and a light theme would not
+have made the numbers easier to read.
+
+**Backend.** Number formatting is now one rule everywhere: three
+significant digits with unit promotion after rounding ($1.07B, $637M,
+$223M, $988K, $12.3M). The implied-value bar is scaled to the largest
+implied value in the filtered list, not to the first row after sorting.
+Sorting puts missing values last in both directions. The search box no
+longer loses focus while typing (it did: every keystroke rebuilt the
+input, so only the first character landed); the fix preserves the caret,
+text direction and horizontal scroll, including IME composition.
+Deep-links now also apply when the hash changes without a reload (paste a
+filtered link while the board is open, or use back/forward); the drawer
+follows the `#p=` link too and closes on back. Farm steps are now
+verify-first: step 2 says what to check and caps the budget ("deposit no
+more than $150 …; otherwise skip"), eligibility (RWA, leverage) is
+checked before the subtype step, and the weekly step is conditional
+("If you opened a position, …"). All 177 rows' farm steps changed;
+lengths 144–304 characters, inside the 20–600 gate bound.
+
+**Checked and deliberately not changed.** No model patch: Astra found no
+further evidence-backed scoring change, and the n ≥ 3 minimum-comps rule
+stays rejected (third evaluation, no new evidence). The dual row shape
+(nested `model` in board.json, flattened in data.js) and the full
+`render()` are kept as the simpler correct structure. No new dashboard
+file, no external library or CDN; the dashboard is still 3 files,
+60.4 KiB, fully offline.
+
+Verified: `node verify-gate.mjs --out out` 7/7; two full runs byte-
+identical; a headless-browser functional test (9 checks: multi-character
+search focus, bar scaling, missing-last sorting, hash deep-link and
+hashchange, drawer content, number format) all pass. Screenshots retaken
+at 1440×900 and visually checked, including an 820 px-wide view (KPI
+strip reflows 3+2, spotlight stacks, Age and Category-multiple columns
+hide, no horizontal overflow).
+
 ## Run it (locally)
 
 ```sh
