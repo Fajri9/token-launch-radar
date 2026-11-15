@@ -6,8 +6,9 @@
 // The model, stated in full on the page: implied = TVL x category multiple x growth x maturity,
 // where the category multiple is the median market-cap-to-TVL ratio of the category's live-token
 // protocols, each ratio capped at 3.0x first, shrunk toward the global median (k = 5) and clamped
-// to [0.05, 1.5]. The live-token protocols are set aside with their market caps shown, never mixed
-// into the ranking.
+// to [0.05, 1.5]. Categories with one live comp are capped at twice the global median (radar-4),
+// so one token cannot set most of a category's multiple. The live-token protocols are set aside
+// with their market caps shown, never mixed into the ranking.
 (function () {
   'use strict';
 
@@ -17,6 +18,14 @@
   var state = { q: '', category: 'all', chain: 'all', watchlist: false, tab: 'pre-token', sort: 'implied', dir: -1, selected: null };
   var WATCHLIST = {};
   DATA.rows.forEach(function (r) { if (r.watchlist) WATCHLIST[r.slug] = true; });
+
+  // Presentation-only context for two rows whose sealed records carry no token metadata
+  // although the assets already trade elsewhere. The ranking never sees this: it is a
+  // disclosure on the detail view, not a model input.
+  var TRADED_CONTEXT = {
+    'usdd': 'Existing traded asset context: USDD already trades as a stablecoin.',
+    'bittensor-dtao': 'Existing traded asset context: dTAO represents traded Bittensor subnet tokens.'
+  };
 
   var usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
   function fmtUsd(n) {
@@ -291,12 +300,51 @@
       el('div', { class: 'formula' },
         'implied = round( tvl_usd x category_multiple x (1 + clamp(change_7d, ' + m.growth_floor + ', ' + m.growth_cap + ') / 100 x ' + m.growth_weight + ') x (' + m.maturity_floor + ' + min(age_days, ' + m.maturity_days + ') / ' + m.maturity_days + ' x ' + m.maturity_range + ') )'
       ),
-      el('p', { class: 'sub', text: 'The category multiple is the median market-cap-to-TVL ratio of the category\u2019s live-token protocols in this snapshot \u2014 each ratio capped at ' + m.ratio_cap + 'x first, so a token whose value has decoupled from its protocol\u2019s TVL cannot set the multiple \u2014 shrunk toward the global median (' + fmtMult(DATA.global_median) + ') with k = ' + m.shrink_k + ', then clamped to [' + m.multiple_min + ', ' + m.multiple_max + ']. A category with no live comps takes the global median. Age is the time since the protocol was first listed, the best record of how long it has run with no token; an unlisted age uses ' + m.unknown_age_days + ' days.' }),
+      el('p', { class: 'sub', text: 'The category multiple is the median market-cap-to-TVL ratio of the category\u2019s live-token protocols in this snapshot \u2014 each ratio capped at ' + m.ratio_cap + 'x first, so a token whose value has decoupled from its protocol\u2019s TVL cannot set the multiple \u2014 shrunk toward the global median (' + fmtMult(DATA.global_median) + ') with k = ' + m.shrink_k + ', then clamped to [' + m.multiple_min + ', ' + m.multiple_max + ']. A category with one live comp is capped at ' + fmtMult(m.singleton_cap * DATA.global_median) + ' (twice the global median), so a single token cannot set most of a category\u2019s multiple. A category with no live comps takes the global median. Age is the time since the protocol was first listed, the best record of how long it has run with no token; an unlisted age uses ' + m.unknown_age_days + ' days.' }),
       el('div', { class: 'table-wrap' },
         el('table', null,
           el('caption', { class: 'sub', text: 'Category multiples used by the board (largest live sets first).' }),
           el('thead', null, el('tr', null, el('th', { scope: 'col', text: 'Category' }), el('th', { scope: 'col', text: 'Live comps' }), el('th', { scope: 'col', text: 'Live median' }), el('th', { scope: 'col', text: 'Multiple used' }))),
           el('tbody', null, catRows)
+        )
+      ),
+      el('p', { class: 'note', text: 'USDD and Bittensor dTAO remain included because their sealed records contain no token metadata; USDD already trades as a stablecoin and dTAO represents traded subnet tokens, so these are metadata-screen matches, not verified future token launches.' }),
+      el('p', { class: 'note', text: 'Implied value is a comparable-based market-cap scenario: it applies live-token MCap/TVL ratios to candidate TVL. It does not estimate launch FDV, launch probability or farming returns.' }),
+      el('p', { class: 'note', text: 'Category multiples use 119 live-token protocols across the full snapshot; the Live token tab shows the 24 largest by market cap. Category and name exclusions are conservative heuristics and may omit qualifying protocols; they do not establish parent-token relationships.' }),
+      el('h3', { text: 'Left out on purpose: 20 protocols at or above the $50M floor' }),
+      el('p', { class: 'sub', text: 'Each of these passes every check the sealed snapshot allows, and each carries a parent protocol on the live DefiLlama record \u2014 the part of the house rule the snapshot cannot check, since it carries no parent field. The house watchlist, not the snapshot, decides who is in. Parents below were read from the live record on 2026-11-15.' }),
+      el('div', { class: 'table-wrap' },
+        el('table', null,
+          el('thead', null, el('tr', null, el('th', { scope: 'col', text: 'Protocol' }), el('th', { scope: 'col', text: 'Category' }), el('th', { scope: 'col', text: 'TVL' }), el('th', { scope: 'col', text: 'Parent on the live record' }))),
+          el('tbody', null, [
+            ['Sentora Curator', 'Risk Curators', '$2.76B', 'parent#sentora'],
+            ['Polymarket International', 'Prediction Market', '$320.2M', 'parent#polymarket'],
+            ['CIAN Yield Layer', 'Yield Aggregator', '$280.3M', 'parent#cian-protocol'],
+            ['Defi Saver Asset Management', 'CDP Manager', '$276.4M', 'parent#defi-saver'],
+            ['Mellow Core', 'Onchain Capital Allocator', '$232.6M', 'parent#mellow-protocol'],
+            ['BitFi Basis', 'Basis Trading', '$214.9M', 'parent#bitfi'],
+            ['Figure Markets Prime', 'Lending', '$190.5M', 'parent#figure-markets'],
+            ['Theo Network thUSD', 'RWA', '$138.6M', 'parent#theo'],
+            ['Figure Markets Exchange', 'OTC Marketplace', '$131.3M', 'parent#figure-markets'],
+            ['Extended Perps', 'Derivatives', '$96.4M', 'parent#extended'],
+            ['Avant avUSD', 'Onchain Capital Allocator', '$94.6M', 'parent#avant-protocol'],
+            ['Stellar DeFi Hub', 'Farm', '$83.2M', 'parent#sentora'],
+            ['Loopscale Lending', 'Lending', '$71.0M', 'parent#loopscale'],
+            ['IPOR Fusion', 'Onchain Capital Allocator', '$68.3M', 'parent#ipor'],
+            ['Circle Gateway', 'Cross Chain Bridge', '$65.3M', 'parent#circle'],
+            ['Arcus Perps', 'Derivatives', '$60.2M', 'parent#arcus'],
+            ['USDCx', 'Stablecoin Wrapper', '$56.6M', 'parent#circle'],
+            ['Solv Strategies', 'Onchain Capital Allocator', '$56.6M', 'parent#solv-protocol'],
+            ['AZverse Perps', 'Derivatives', '$52.0M', 'parent#azverse'],
+            ['Nado Spot', 'Dexs', '$51.1M', 'parent#nado']
+          ].map(function (r) {
+            return el('tr', null,
+              el('td', { text: r[0] }),
+              el('td', { text: r[1] }),
+              el('td', { class: 'num', text: r[2] }),
+              el('td', { text: r[3] })
+            );
+          }))
         )
       ),
       el('p', { class: 'note', text: 'What counts as pre-token: the record carries no token (no market cap, no CoinGecko id, no symbol) and the protocol passes the house\u2019s own exclusion rule \u2014 not a bridge, liquid-staking, restaking or CEX product, not a versioned pool, no whole word wrapped, staked or staking in its name, no staked-token ticker (stHYPE, stETH) in its name, not named for an exchange. The snapshot carries no parent-protocol field, so that one part of the rule cannot be checked from here. Say a protocol records no token, never that it has none: a record can miss a token that exists.' })
@@ -321,6 +369,7 @@
       ),
       el('button', { class: 'close', type: 'button', 'aria-label': 'Close details', text: 'Close', onclick: function () { dialog.close(); } })
     ));
+    if (TRADED_CONTEXT[slug]) dialog.appendChild(el('p', { class: 'note', text: TRADED_CONTEXT[slug] + ' This row is a metadata-screen match, not a verified future token launch.' }));
     dialog.appendChild(el('section', { class: 'detail-section' },
       el('h3', { text: 'Implied value' }),
       el('div', { class: 'equation' },
@@ -335,7 +384,8 @@
       el('p', { class: 'sub', text: 'Model ' + DATA.model_version + ': the category multiple comes from ' + row.category_live_count + ' live-token comp' + (row.category_live_count === 1 ? '' : 's') + ' in this category (live median ' + fmtMult(row.category_live_median) + ', shrunk toward the global ' + fmtMult(DATA.global_median) + '). This is an estimate, not a price.' })
     ));
     dialog.appendChild(el('section', { class: 'detail-section' },
-      el('h3', { text: 'Farm plan' }),
+      el('h3', { text: 'Interaction checklist \u2014 unverified' }),
+      el('p', { class: 'sub', text: 'These steps are generated from category, TVL and age. No protocol-specific interaction route, points program or reward eligibility has been verified.' }),
       el('ol', { class: 'steps' }, steps.map(function (s) {
         var at = s.indexOf(' Cost: ');
         var action = at >= 0 ? s.slice(0, at) : s;

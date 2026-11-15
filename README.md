@@ -28,6 +28,7 @@ implied = round( tvl_usd × category_multiple × growth × maturity )
 - **category_multiple** — the median market-cap-to-TVL ratio of the category's
   live-token protocols in this snapshot, each ratio winsorised at 3.0x first,
   then shrunk toward the global median (k = 5) and clamped to [0.05, 1.5].
+  A category with one live comp is capped at twice the global median.
   A category with no live comps takes the global median.
 - **growth** — `1 + clamp(change_7d, -60, 120) / 100 × 0.5`.
 - **maturity** — `0.6 + min(age_days, 1095) / 1095 × 0.4`, where age is the time
@@ -68,27 +69,79 @@ shape — only these two rules changed, and the top 10 is unchanged.
    staked product of a token that already trades that the competition's rule
    excludes. The board drops from 178 to 177 rows.
 
-Not changed, and noted for the later Astra review: a category's multiple still
-rests on however many live comps it has — Risk Curators on one (Api3, 2.98x),
-Derivatives on two, Onchain Capital Allocator on two — and the shrink (k = 5)
-is the only guard against that thinness. A minimum-comps rule was considered
-and rejected for this entry: as measured on the radar-2 board it would
-reshuffle 175 of 178 rows and roughly halve the total implied value (about
-$5.25B → about $2.95B), which is a model redesign, not a fix, and belongs to
-a reviewer decision, not a silent change. The 20
-protocols at or above the $50M floor that are pre-token but not on the
+Not changed, and decided by the Astra review instead: a minimum-comps rule (n ≥ 3,
+else the global median) was considered and rejected again: measured on the radar-4
+board it would reshuffle 173 of 177 rows and cut the total implied value from about
+$4.15B to about $2.95B (`node tools/sensitivity.mjs`) — a model redesign, not a fix.
+The 20 protocols at or above the $50M floor that are pre-token but not on the
 house's watchlist (Sentora Curator at $2.76B TVL, Cian Yield Layer, Mellow
 Core, Polymarket International, …) are still not on the board: the live
-DefiLlama record carries a parentProtocol for them (Sentora Curator →
-parent#sentora), which is exactly the part of the house's exclusion rule the
-snapshot cannot check — so the watchlist, not the snapshot, decides who is
-in, and adding them would contradict the house's own exclusion.
+DefiLlama record carries a parentProtocol for every one of them (Sentora
+Curator → parent#sentora, and so on — the full list with parents is now
+published in the dashboard's methodology), which is exactly the part of the
+house's exclusion rule the snapshot cannot check — so the watchlist, not the
+snapshot, decides who is in, and adding them would contradict the house's own
+exclusion.
+
+## Changes in radar-4 (Astra review of 2026-11-15)
+
+GPT-6 Astra reviewed the entry (data + model + open items from the review
+above) against the live DefiLlama record. One model change, the rest
+disclosure. The top 10 is reshuffled by the cap; the board stays 177 rows.
+
+1. **Singleton cap on category multiples (model).** A category with one live
+   comp is now capped at twice the global median (0.492x in this snapshot).
+   Astra's finding: seven of the top 10 rows were Risk Curators at 0.7008x,
+   a multiple resting on a single live comp (Api3, ~2.7–3.0x) — about 59%
+   of the board's total implied value through one comparable. The shrink
+   (k = 5) alone left that concentration in place. Six categories drop to
+   the cap: Risk Curators 0.7008 → 0.492, Chain, Collateral Management and
+   Prediction Market 0.705 → 0.492, Decentralized AI 0.5484 → 0.492, NFT
+   Marketplace 0.5386 → 0.492. Top rows fall: Steakhouse Financial
+   $1.52B → $1.07B, Gauntlet $907.6M → $637.2M, Nonce Capital $211.1M →
+   $148.2M, Hive Protocol $124.7M → $87.1M. Total implied value $5.24B →
+   $4.15B. USDD rises to rank 4 and Upshift enters the top 10 at rank 9.
+2. **USDD and Bittensor dTAO named (disclosure).** Both remain included:
+   their sealed records carry no token metadata, and both sit on the house
+   watchlist — but USDD already trades as a stablecoin and dTAO represents
+   traded subnet tokens, so the methodology now says so in one line and
+   each of the two detail views carries an "Existing traded asset context"
+   note. Ranking untouched.
+3. **Farm plans labelled honestly (disclosure).** The detail view's farm
+   plan is now headed "Interaction checklist — unverified": the steps are
+   generated from category, TVL and age, and no protocol-specific
+   interaction route, points program or reward eligibility has been
+   verified.
+4. **Methodology hardened (disclosure).** The methodology now states that
+   implied value is a comparable-based market-cap scenario (not launch FDV,
+   launch probability or farming returns); that category multiples use 119
+   live-token protocols while the Live tab shows the 24 largest by market
+   cap; that the exclusion heuristics are conservative and may omit
+   qualifying protocols; and it publishes the 20 excluded ≥floor protocols
+   with their live-record parents (see above).
+
+Checked by Astra and deliberately NOT changed, with reasons: the age and
+growth clamps already exist in the code (`ageDays` clamps at 0, `impliedValue`
+clamps age to [0, 1095] and growth to [-60, 120], missing growth defaults to
+0) — the review's proposed guard is equivalent to what is there. The
+"no symbol" sentinel is a non-issue for the sealed snapshot (its symbol
+field is null for all 342 token-less records, never "-"). "Cross Chain
+Bridge" was NOT added to the excluded categories: the house's own rule
+(RULES.txt line 14) enumerates the excluded categories — Bridge, Canonical
+Bridge, Liquid Staking, Liquid Restaking, Restaked BTC, CEX — and Cross
+Chain Bridge is not among them, so excluding it would contradict the house.
+No Cross Chain Bridge row is on the board in any case. The dTAO figure was
+verified exactly: $376.0M TVL × 0.3123 × 0.9672 growth × 0.6205 maturity ≈
+$70M. Derivatives (0.7934x on two comps) and Token Locker (0.6136x on two)
+were flagged by Astra as thin but left alone: no patch is justified from
+the aggregates alone, and the n ≥ 3 rule above was rejected as a redesign.
 
 ## Run it (locally)
 
 ```sh
-mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts --input ../input/snapshot.json
+mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts --input ../makefun-radar-kit/input/snapshot.json
 ```
+(The kit's snapshot lives at `~/workspace/makefun-radar-kit/input/snapshot.json` on this machine. The grader mounts the sealed snapshot at the default `/input/snapshot.json` — that default is untouched.)
 
 Deterministic: the same snapshot always writes the same bytes.
 

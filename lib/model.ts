@@ -17,6 +17,8 @@
 // sane band:
 //
 //   catMultiple = clamp((n * median(min(cat, 3.0)) + K * globalMedian) / (n + K), 0.05, 1.5)   K = 5
+//   single-comp categories (n = 1) are further capped at 2x the global median, so one token's
+//   ratio cannot set most of a category's multiple (see MODEL_VERSION, radar-4).
 //   base        = tvl_usd x catMultiple
 //   growth      = clamp(change_7d, -60, 120) per cent
 //   growthMult  = 1 + (growth / 100) x 0.5
@@ -63,6 +65,8 @@ export interface ModelConstants {
   multiple_max: number;
   /** Winsorisation cap on a live comp's mcap/TVL ratio, applied before the category median. */
   ratio_cap: number;
+  /** Cap on a single-comp category's multiple, as a multiple of the global median. */
+  singleton_cap: number;
 }
 
 export const MODEL: ModelConstants = {
@@ -77,10 +81,17 @@ export const MODEL: ModelConstants = {
   multiple_min: 0.05,
   multiple_max: 1.5,
   ratio_cap: 3,
+  singleton_cap: 2,
 };
 
 /** The model's version label: the dashboard names it. */
-export const MODEL_VERSION = 'radar-3';
+export const MODEL_VERSION = 'radar-4';
+// radar-4 = radar-3 + Astra review (2026-11-15):
+//   (1) a category with a single live comp (n = 1) is capped at 2x the global median —
+//       the shrink alone still let one token's ratio set most of the multiple (Risk Curators
+//       sat at 0.7008 on Api3 alone, 59% of the board's implied value through seven top-10
+//       rows); (2) methodology disclosures only (USDD/dTAO note, farm-plan honesty, exclusion
+//       list) — no other model change.
 // radar-3 = radar-2 + two fixes from the 2026-11-15 review (see README, "Changes in radar-3"):
 //   (1) each live comp's mcap/TVL ratio is winsorised at 3.0x before the category median —
 //       the uncapped median let one tiny-TVL comp with a 400x ratio set Prediction Market's
@@ -247,7 +258,11 @@ export function categoryMultiples(snapshot: Snapshot, model: ModelConstants = MO
     const med = medianOf(ratios);
     const n = ratios.length;
     const shrunk = (n * med + model.shrink_k * global) / (n + model.shrink_k);
-    const multiple = Math.min(model.multiple_max, Math.max(model.multiple_min, shrunk));
+    let multiple = Math.min(model.multiple_max, Math.max(model.multiple_min, shrunk));
+    // A single live comp cannot push a category above twice the global median: with n = 1 the
+    // shrink alone still leaves one token's ratio setting most of the multiple (Risk Curators
+    // sat at 0.7008 on Api3 alone, 59% of the board's implied value through seven top-10 rows).
+    if (n === 1) multiple = Math.min(multiple, model.singleton_cap * global);
     byCategory.set(cat, { category: cat, live_count: n, live_median: round4(med), multiple: round4(multiple) });
   }
   return { byCategory, global: round4(global) };
