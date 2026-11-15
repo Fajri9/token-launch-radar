@@ -1,12 +1,13 @@
-// Token Radar's dashboard (radar-2). It reads window.RADAR (written beside dashboard/ by main.ts)
+// Token Radar's dashboard (radar-3). It reads window.RADAR (written beside dashboard/ by main.ts)
 // and renders the ranked board, a filterable table, a per-protocol detail drawer with the model's
 // own inputs and the protocol's farm plan, and the methodology behind the ranking. No network:
 // every byte it shows is in data.js.
 //
 // The model, stated in full on the page: implied = TVL x category multiple x growth x maturity,
 // where the category multiple is the median market-cap-to-TVL ratio of the category's live-token
-// protocols, shrunk toward the global median (k = 5) and clamped to [0.05, 1.5]. The live-token
-// protocols are set aside with their market caps shown, never mixed into the ranking.
+// protocols, each ratio capped at 3.0x first, shrunk toward the global median (k = 5) and clamped
+// to [0.05, 1.5]. The live-token protocols are set aside with their market caps shown, never mixed
+// into the ranking.
 (function () {
   'use strict';
 
@@ -290,7 +291,7 @@
       el('div', { class: 'formula' },
         'implied = round( tvl_usd x category_multiple x (1 + clamp(change_7d, ' + m.growth_floor + ', ' + m.growth_cap + ') / 100 x ' + m.growth_weight + ') x (' + m.maturity_floor + ' + min(age_days, ' + m.maturity_days + ') / ' + m.maturity_days + ' x ' + m.maturity_range + ') )'
       ),
-      el('p', { class: 'sub', text: 'The category multiple is the median market-cap-to-TVL ratio of the category\u2019s live-token protocols in this snapshot, shrunk toward the global median (' + fmtMult(DATA.global_median) + ') with k = ' + m.shrink_k + ' so a category with one or two live comps cannot swing the board, then clamped to [' + m.multiple_min + ', ' + m.multiple_max + ']. A category with no live comps takes the global median. Age is the time since the protocol was first listed, the best record of how long it has run with no token; an unlisted age uses ' + m.unknown_age_days + ' days.' }),
+      el('p', { class: 'sub', text: 'The category multiple is the median market-cap-to-TVL ratio of the category\u2019s live-token protocols in this snapshot \u2014 each ratio capped at ' + m.ratio_cap + 'x first, so a token whose value has decoupled from its protocol\u2019s TVL cannot set the multiple \u2014 shrunk toward the global median (' + fmtMult(DATA.global_median) + ') with k = ' + m.shrink_k + ', then clamped to [' + m.multiple_min + ', ' + m.multiple_max + ']. A category with no live comps takes the global median. Age is the time since the protocol was first listed, the best record of how long it has run with no token; an unlisted age uses ' + m.unknown_age_days + ' days.' }),
       el('div', { class: 'table-wrap' },
         el('table', null,
           el('caption', { class: 'sub', text: 'Category multiples used by the board (largest live sets first).' }),
@@ -298,7 +299,7 @@
           el('tbody', null, catRows)
         )
       ),
-      el('p', { class: 'note', text: 'What counts as pre-token: the record carries no token (no market cap, no CoinGecko id, no symbol) and the protocol passes the house\u2019s own exclusion rule \u2014 not a bridge, liquid-staking, restaking or CEX product, not a versioned pool, no whole word wrapped, staked or staking in its name, not named for an exchange. The snapshot carries no parent-protocol field, so that one part of the rule cannot be checked from here. Say a protocol records no token, never that it has none: a record can miss a token that exists.' })
+      el('p', { class: 'note', text: 'What counts as pre-token: the record carries no token (no market cap, no CoinGecko id, no symbol) and the protocol passes the house\u2019s own exclusion rule \u2014 not a bridge, liquid-staking, restaking or CEX product, not a versioned pool, no whole word wrapped, staked or staking in its name, no staked-token ticker (stHYPE, stETH) in its name, not named for an exchange. The snapshot carries no parent-protocol field, so that one part of the rule cannot be checked from here. Say a protocol records no token, never that it has none: a record can miss a token that exists.' })
     );
   }
 

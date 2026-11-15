@@ -1,20 +1,22 @@
-// The token radar's model, radar-2: one snapshot of the protocol universe in, one ranked board out.
+// The token radar's model, radar-3: one snapshot of the protocol universe in, one ranked board out.
 //
 // The board covers every slug in the snapshot's watchlist (the floor, never a ceiling) and adds the
 // pre-token protocols below the watchlist floor that pass the house's own exclusion rule (the checkable
 // parts of it: not a bridge, liquid-staking, restaking or CEX product, not a versioned pool, no whole
-// word wrapped / staked / staking in the name, not named for an exchange). A protocol is pre-token
-// when its record carries no token (no market cap, no CoinGecko id, no symbol); the snapshot's
-// live-token protocols are kept apart and shown as the market's own values, never mixed into the
-// ranked board.
+// word wrapped / staked / staking in the name, no staked-token ticker (stHYPE, stETH) in the name,
+// not named for an exchange). A protocol is pre-token when its record carries no token (no market cap,
+// no CoinGecko id, no symbol); the snapshot's live-token protocols are kept apart and shown as the
+// market's own values, never mixed into the ranked board.
 //
 // Implied value follows only from the snapshot's own figures. The one thing the starter's flat
 // multiple gets wrong is that a dollar of TVL is not worth the same in every category: the live
 // market already prices that. So each category's multiple is the median market-cap-to-TVL ratio of
-// the live-token protocols in that category, shrunk toward the global median so a category with one
-// or two live comps cannot swing the board, and clamped to a sane band:
+// the live-token protocols in that category — each ratio winsorised at 3.0x first, so a token whose
+// value has decoupled from its protocol's TVL cannot set a category's multiple — shrunk toward the
+// global median so a category with one or two live comps cannot swing the board, and clamped to a
+// sane band:
 //
-//   catMultiple = clamp((n * median(cat) + K * globalMedian) / (n + K), 0.05, 1.5)   K = 5
+//   catMultiple = clamp((n * median(min(cat, 3.0)) + K * globalMedian) / (n + K), 0.05, 1.5)   K = 5
 //   base        = tvl_usd x catMultiple
 //   growth      = clamp(change_7d, -60, 120) per cent
 //   growthMult  = 1 + (growth / 100) x 0.5
@@ -59,6 +61,8 @@ export interface ModelConstants {
   shrink_k: number;
   multiple_min: number;
   multiple_max: number;
+  /** Winsorisation cap on a live comp's mcap/TVL ratio, applied before the category median. */
+  ratio_cap: number;
 }
 
 export const MODEL: ModelConstants = {
@@ -72,10 +76,17 @@ export const MODEL: ModelConstants = {
   shrink_k: 5,
   multiple_min: 0.05,
   multiple_max: 1.5,
+  ratio_cap: 3,
 };
 
 /** The model's version label: the dashboard names it. */
-export const MODEL_VERSION = 'radar-2';
+export const MODEL_VERSION = 'radar-3';
+// radar-3 = radar-2 + two fixes from the 2026-11-15 review (see README, "Changes in radar-3"):
+//   (1) each live comp's mcap/TVL ratio is winsorised at 3.0x before the category median —
+//       the uncapped median let one tiny-TVL comp with a 400x ratio set Prediction Market's
+//       multiple to 1.50 (clamped); (2) a staked-token ticker in a name (stHYPE, stETH, stSOL)
+//       now fails isRankable — Valantis stHYPE Restaking was on the radar-2 board at rank 173
+//       although it is a restaking vault for stHYPE, a liquid-staked HYPE token that trades.
 
 /** How many live-token protocols the Live token view carries, by market cap. */
 export const LIVE_ROWS = 24;
@@ -208,8 +219,10 @@ export function ageDays(asOf: string, listedAt: string | null): number | null {
 /**
  * The category multiples, derived from the snapshot's own live-token protocols: for each category,
  * the median market-cap-to-TVL ratio of its live protocols (exchanges excluded, they are not a
- * market for launch multiples), shrunk toward the global median and clamped. A category with no
- * live comps, and a protocol with no category, take the global median. Nothing is hand-written.
+ * market for launch multiples), each ratio winsorised at model.ratio_cap first — a ratio above the
+ * cap is a token whose value has decoupled from its protocol's TVL, not a launch comp — then
+ * shrunk toward the global median and clamped. A category with no live comps, and a protocol with
+ * no category, take the global median. Nothing is hand-written.
  */
 export function categoryMultiples(snapshot: Snapshot, model: ModelConstants = MODEL): { byCategory: Map<string, CategoryMultiple>; global: number } {
   const byCat = new Map<string, number[]>();
@@ -218,7 +231,7 @@ export function categoryMultiples(snapshot: Snapshot, model: ModelConstants = MO
     if (p.mcap_usd === null || p.mcap_usd <= 0 || p.tvl_usd <= 0) continue;
     if (p.gecko_id === null && p.symbol === null) continue;
     if (p.category === 'CEX') continue;
-    const ratio = p.mcap_usd / p.tvl_usd;
+    const ratio = Math.min(p.mcap_usd / p.tvl_usd, model.ratio_cap);
     if (!Number.isFinite(ratio) || ratio <= 0) continue;
     all.push(ratio);
     const key = p.category ?? 'Other';
@@ -271,6 +284,12 @@ export function impliedValue(
 const VERSIONED = /\s(V\d+(\.\d+)?|v\d+(\.\d+)?|\d+\.\d+)$/;
 /** A whole word wrapped, staked or staking in a name: a wrapped or staked product of another token. */
 const WRAPPED_WORD = /\b(wrapped|staked|staking)\b/i;
+/** A staked-token ticker in a name (stHYPE, stETH, stSOL): a liquid-staked product of a token that
+    trades. The whole-word rule misses it — "Restaking" contains "staking" but is not the word, and
+    the ticker itself carries no whole word at all — so it needs its own pattern. Added in radar-3:
+    Valantis stHYPE Restaking was on the radar-2 board although it is a restaking vault for stHYPE,
+    the liquid-staked HYPE token (HYPE itself trades, CoinGecko rank ~11). */
+const STAKED_TICKER = /\bst[A-Z][A-Za-z0-9]+\b/;
 /** The house rule's excluded categories: bridges and staking products of tokens that already trade. */
 const EXCLUDED_CATEGORIES = new Set(['Bridge', 'Canonical Bridge', 'Liquid Staking', 'Liquid Restaking', 'Restaked BTC', 'CEX']);
 /** Names beginning with an exchange's name are that exchange's product, not a launch of their own. */
@@ -291,6 +310,7 @@ export function isRankable(p: SnapshotProtocol): boolean {
   if (p.category !== null && EXCLUDED_CATEGORIES.has(p.category)) return false;
   if (VERSIONED.test(p.name)) return false;
   if (WRAPPED_WORD.test(p.name)) return false;
+  if (STAKED_TICKER.test(p.name)) return false;
   for (const e of EXCHANGE_NAMES) if (p.name.startsWith(e)) return false;
   return true;
 }
